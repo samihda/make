@@ -1,0 +1,79 @@
+#!/bin/awk -f
+
+BEGIN {
+    while (getline <"Makefile" > 0) {
+        if ($0 ~ /^[A-Za-z]/) {
+            sub(/:/, "")
+            if (++targets[target = $1] > 1) {
+                error(target "is already defined")
+            }
+
+            for (i = 2; i <= NF; i++) {
+                recipes[target, ++count[target]] = $i
+            }
+        } else if ($0 ~ /^\t/) {
+            cmd[target] = cmd[target] $0 "\n"
+        } else if (NF > 0) {
+            error("illegal line: " $0)
+        }
+    }
+
+    ages()
+
+    if (ARGV[1] in targets) {
+        if (update(ARGV[1]) == 0)
+            print ARGV[1] " is up to date"
+    } else {
+        error(ARGV[1] " is not in makefile")
+    }
+}
+
+function ages(    f, n, t) {
+    for (t = 1; ("ls -t" | getline f) > 0; t++) {
+        age[f] = t
+    }
+
+    close("ls -t")
+
+    for (n in targets) {
+        if (!(n in age)) {
+            age[n] = 9999
+        }
+    }
+}
+
+function update(name,    changed, i, dependency) {
+    if (!(name in age)) {
+        error(name " does not exist")
+    }
+
+    if (!(name in targets)) return 0
+
+    changed = 0
+    visited[name] = 1
+
+    for (i = 1; i <= count[name]; i++) {
+        if (visited[dependency = recipes[name, i]] == 0) {
+            update(dependency)
+        } else if (visited[dependency] == 1) {
+            error(dependency " and " name " are circularly defined")
+        }
+
+        if (age[dependency] <= age[name]) {
+            changed++
+        }
+    }
+
+    visited[name] = 2
+    if (changed || count[name] == 0) {
+        printf("%s", cmd[name])
+        system(cmd[name])
+        ages()
+        age[name] = 0
+        return 1
+    }
+
+    return 0
+}
+
+function error(str) { print "Error: " str; exit }
